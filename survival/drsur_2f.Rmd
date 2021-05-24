@@ -1,0 +1,1235 @@
+---
+title: "factorial"
+author: "haiyan yu"
+date: "6/26/2020"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+rm(simdata)
+library("factorial2x2")
+ dfsim<-data.frame(simdata)
+ indA <- dfsim[, 'indA']    # treatment A indicator
+indB <- dfsim[, 'indB']    # treatment B indicator
+ ########
+time <- dfsim[, 'time']    # follow-up time
+#time<-time*(0.6+1.2*indA)*(0.3+1.3*indB)
+  dfsim$time<-time
+###########
+
+###############Causal 
+event <- dfsim[, 'event']  # event indicator
+nAc<-nrow(dfsim[dfsim$indA==1,])
+#Aprocess<-rbinom(nAc, 1,.45)
+###For significient in ANOVA and solution of the blocks (dividually)
+#write.csv(Aprocess,"Aprocess.csv")
+Aprocess<-read.csv("Aprocess.csv",header = TRUE)
+sum(dfsim[dfsim$indA==1,"event"])
+#dfsim[dfsim$indA==1,"event"]<-dfsim[dfsim$indA==1,"event"]*Aprocess
+dfsim[dfsim$indA==1,"event"]<-dfsim[dfsim$indA==1,"event"]*Aprocess$x
+sum(dfsim[dfsim$indA==1,"event"])
+
+
+nBc <- nrow(dfsim[dfsim$indB==1,])
+#Bprocess<-rbinom(nBc, 1,.65)
+#write.csv(Bprocess,"Bprocess.csv")
+Bprocess<-read.csv("Bprocess.csv",header = TRUE)
+
+sum(dfsim[dfsim$indB==1,"event"])
+#dfsim[dfsim$indB==1,"event"]<-dfsim[dfsim$indB==1,"event"]*Bprocess
+dfsim[dfsim$indB==1,"event"]<-dfsim[dfsim$indB==1,"event"]*Bprocess$x
+sum(dfsim[dfsim$indB==1,"event"])
+###########
+covmat <- dfsim[, 6:10]    # baseline covariates
+
+df<-data.frame(dfsim)
+x<-seq(1:16)
+head(dfsim)
+table(indA,indB)
+#fac2x2analyze(time, event, indA, indB, covmat, alpha = 0.05, dig = 2, niter = 5)
+ABc<-head(df[df$indA==1 &(df$indB==1)&(df$event==1),],1)
+ABc<-head(df[df$indA==1 &(df$indB==1)&(df$event==0),],1)
+AcBc<-head(df[df$indA==0&(df$indB==1)&(df$event==1),],1)
+AcBc<-head(df[df$indA==0&(df$indB==1)&(df$event==0),],1)
+ABce<-head(df[df$indA==1&(df$indB==0)&(df$event==1),],1)
+ABcec<-head(df[df$indA==1&(df$indB==0)&(df$event==0),],1)
+AcBc<-head(df[df$indA==0&(df$indB==0)&(df$event==1),],1)
+AcBc<-head(df[df$indA==0&(df$indB==0)&(df$event==0),],1)
+AB.samp<-rbind(ABc,ABc,AcBc,AcBc,ABce,ABcec,AcBc,AcBc)
+library("xtable")
+xtable(AB.samp)
+```
+
+
+```{r}
+sur.df<-df
+sur.df$T<-1
+sur.df[df$indA==0&(df$indB==1),"T"]<-2
+sur.df[df$indA==1&(df$indB==0),"T"]<-3
+sur.df[df$indA==1&(df$indB==1),"T"]<-4
+ls(sur.df)
+
+```
+##
+```{r}
+#ps <- glm(T ~ cvd +fac2+ fac3+fac4+fac5,data = sur.df)
+#plot(density(ps$fitted.values))
+table(sur.df$T)
+#sur.df$ps<-round(ps$fitted.values,3)
+library("nnet")
+ps <- multinom(T ~cvd +fac2+ fac3+fac4+fac5,data = sur.df)
+table(ps$fitted.values)
+plot(density(ps$fitted.values[,1]))
+#table(sur.df$T)
+head(ps$fitted.values[,1])
+#sur.df$ps<-round(ps$fitted.values[,1],3)
+#sur.df$ps<-round(ps$fitted.values[,2],3)
+#sur.df$ps<-round(ps$fitted.values[,3],3)
+sur.df$ps<-round(ps$fitted.values[,4],3)
+```
+
+```{r}
+head(sur.df)
+qvalue<-quantile(sur.df$ps, probs = seq(0, 1, 0.25), na.rm = FALSE)
+#  qvalue<-data.frame(qvalue)
+table(sur.df$T,sur.df$ps)
+{
+  plot(density(sur.df[sur.df$T==1,"ps"]),ylim=range(0,78)
+       ,lty=c(1), pch=c(1), lwd=2,col=c("red"))
+  lines(density(sur.df[sur.df$T==2,"ps"])
+        ,lty=c(2), pch=c(2), lwd=2,col=c("blue"))
+  lines(density(sur.df[sur.df$T==3,"ps"])
+        ,lty=c(3), pch=c(3), lwd=2,col=c("brown"))
+  lines(density(sur.df[sur.df$T==4,"ps"])
+        ,lty=c(4), pch=c(4),lwd=2, col=c("green"))
+  grid()
+  legend("topright", inset=.05, title="Group", c("1","2","3","4"),
+                      lty=c(1:4), #pch=c(1:4), 
+         col=c("red", "blue","brown","green"))
+
+  abline(v =qvalue[2:4], col="red", lwd=2, lty=2)
+}
+```
+
+#Block
+
+```{r}
+
+
+sur.df$block<-1
+#sur.df[sur.df$ps>0.5,"block"]<-2
+sur.df[sur.df$ps>qvalue[2],"block"]<-2
+sur.df[sur.df$ps>qvalue[3],"block"]<-3
+sur.df[sur.df$ps>qvalue[4],"block"]<-4
+
+t<-4
+b<-4
+sur.df$Cell<-(sur.df$T)+(sur.df$block-1)*t
+table(sur.df$T,sur.df$Cell)
+table(sur.df$block,sur.df$Cell)
+
+ABe<-head(sur.df[sur.df$indA==1 &(sur.df$indB==1)&(sur.df$event==1),],1)
+ABec<-head(sur.df[sur.df$indA==1 &(sur.df$indB==1)&(sur.df$event==0),],1)
+AcBe<-head(sur.df[sur.df$indA==0&(sur.df$indB==1)&(sur.df$event==1),],1)
+AcBec<-head(sur.df[sur.df$indA==0&(sur.df$indB==1)&(sur.df$event==0),],1)
+ABce<-head(sur.df[sur.df$indA==1&(sur.df$indB==0)&(sur.df$event==1),],1)
+ABcec<-head(sur.df[sur.df$indA==1&(sur.df$indB==0)&(sur.df$event==0),],1)
+AcBce<-head(sur.df[sur.df$indA==0&(sur.df$indB==0)&(sur.df$event==1),],1)
+AcBcec<-head(sur.df[sur.df$indA==0&(sur.df$indB==0)&(sur.df$event==0),],1)
+AB.samp<-rbind(ABe,ABec,AcBe,AcBec,ABce,ABcec,AcBce,AcBcec)
+library("xtable")
+xtable(AB.samp)
+```
+
+```{r}
+ls(sur.df)
+cbd.df<-sur.df[,c("subjno","time","event","T","block","Cell")]
+head(cbd.df)
+
+resp.df<-data.frame()
+tn<-max(cbd.df$Cell)
+
+############################################################
+nrow.sur<-data.frame()
+for (j in seq(1:tn)){
+#ts<-j-1
+  cbd.dfc<-cbd.df[cbd.df$Cell==j,]
+    library(survival)
+#   model.fit<-survfit(Surv(cbd.dfc$time, cbd.dfc$event) ~ T,
+       model.fit<-survfit(Surv(cbd.dfc$time, cbd.dfc$event) ~ 1,
+                   data=cbd.dfc)
+    surv.v<-data.frame(model.fit$surv,model.fit$std.err,model.fit$n.event)
+    names(surv.v)<-c("surv","se","event")
+    nrow(surv.v)
+  ######Not for indivial leanght  
+    nrow.temp<-nrow(surv.v)
+    nrow.sur<-rbind(nrow.sur,nrow.temp)
+  ####  
+}
+##truncated
+nrow.t<-min(nrow.sur)
+#nrow.t<-max(nrow.sur)
+#############################################################
+for (j in seq(1:tn)){
+#ts<-j-1
+  cbd.dfc<-cbd.df[cbd.df$Cell==j,]
+    library(survival)
+#   model.fit<-survfit(Surv(cbd.dfc$time, cbd.dfc$event) ~ T,
+       model.fit<-survfit(Surv(cbd.dfc$time, cbd.dfc$event) ~ T,
+                   data=cbd.dfc)
+    surv.v<-data.frame(model.fit$surv,model.fit$std.err,model.fit$n.event)
+    names(surv.v)<-c("surv","se","event")
+    nrow(surv.v)
+  ######Not for indivial leanght  
+  #  nrow.t<-nrow(surv.v)
+    
+  ####  
+    #quantile for curve
+    #odds or even to ceiling
+    loc.m<-ceiling(nrow.t/2)
+    loc.1q<-ceiling(nrow.t/4)
+    loc.3q<-ceiling(3*nrow.t/4)
+    {
+    #resp1.m<-median(surv.v[,"surv"])
+     resp1.m<-surv.v[loc.m,"surv"]
+     resp1.m<-round(resp1.m,3) 
+    resp2.m<-surv.v[loc.1q,"surv"]-surv.v[loc.3q,"surv"]
+    resp2.m<-round(resp2.m,3)
+    resp1.se<-surv.v[loc.m,"se"]
+    resp1.se<-round(resp1.se,3)
+    resp2.se<-sqrt(surv.v[loc.1q,"surv"]-surv.v[loc.3q,"surv"])
+    resp2.se<-round(resp2.se,3)
+    }
+    
+    outcome<-data.frame(j,resp1.m,resp2.m,resp1.se,resp2.se)
+    #names(outcome$i...1)<-c("T")
+    resp.df<-rbind(resp.df,outcome)
+    head(resp.df)
+}
+
+
+```
+
+
+
+## Survival curves in each block
+
+```{r}
+ls(sur.df)
+
+plot(survfit(Surv(cbd.df$time, cbd.df$event) ~1,#~ T,
+             data=cbd.df))
+
+#cbd.df<-sur.df[,c("id","time","status","T","block")]
+#https://rstudio-pubs-static.s3.amazonaws.com/258534_ca069d0996e24dd291901dc0c015ae6f.html
+plot(survfit(Surv(cbd.df$time, cbd.df$event) ~T,
+             data=cbd.df))
+#b=5;cbd.df.b1<-cbd.df[cbd.df$block==i+1,]
+par(mfrow=c(1,2))
+tb=max(cbd.df$block)
+for (i in seq(1:tb)) {
+  cbd.dfc<-cbd.df[cbd.df$block==i,]
+  {
+  plot(survfit(Surv(cbd.dfc$time, cbd.dfc$event)  ~ T,
+               data=cbd.dfc), 
+       xlab="Time in days", ylab="Survival probability (1-Relapse)",
+  col=c("red", "blue","yellow","green"), lwd=2)
+#  legend("bottomleft", legend=c("A1c A2c", "A1c A2", "A1 A2c", "A1 A2"),
+          legend("bottomleft", 
+                 legend=( expression({c(bar(A1),bar(A2))}, 
+                                     {c(bar(A1),A2)},
+                                     {c(A1,bar(A2))},
+                                     {c(A1,A2)})),
+  col=c("red", "blue","yellow","green") , lwd=2)
+  grid()
+  }
+}
+#https://astrostatistics.psu.edu/su07/R/html/grDevices/html/plotmath.html
+# xlab = expression(eta^s), ylab = expression(eta^s))
+```
+#####Samples of 16 cases
+```{r}
+sur.df.design<-data.frame()
+tn<-max(cbd.df$Cell)
+for (j in seq(1:tn)){
+  temp<-head(sur.df[sur.df$Cell==j,],1)
+  sur.df.design<-rbind(sur.df.design,temp) 
+}
+xtable(sur.df.design)
+```
+
+#Plot
+
+```{r}
+#head(resp.df)
+library("ggplot2")
+ggplot.df<-resp.df
+names(ggplot.df)<-c("Cell","response1","response2","response1se","response2se")
+
+
+ggplot.dfgroup<-data.frame()
+for (it in seq(1:4)) {
+  if(it==1){
+    response<-ggplot.df$response1
+    temp<-cbind(x,response)
+    temp<-data.frame(temp)
+    temp$group<-1
+    ggplot.dfgroup<-rbind(ggplot.dfgroup,temp)
+  }else if(it==2){
+    response<-ggplot.df$response2
+    temp<-cbind(x,response)
+    temp<-data.frame(temp)
+    temp$group<-2
+    ggplot.dfgroup<-rbind(ggplot.dfgroup,temp)
+  }else if(it==3){
+    response<-ggplot.df$response1se
+     temp<-cbind(x,response)
+    temp<-data.frame(temp)
+    temp$group<-3
+    ggplot.dfgroup<-rbind(ggplot.dfgroup,temp)
+  }else{
+    response<-ggplot.df$response2se
+   temp<-cbind(x,response)
+    temp<-data.frame(temp)
+    temp$group<-4
+    ggplot.dfgroup<-rbind(ggplot.dfgroup,temp)
+  }
+    
+{p<-ggplot(data=ggplot.df, aes(x=Cell, y=response, fill=as.factor(Cell))) +
+  #fill=as.factor(k) is eesntial
+  geom_bar(stat="identity", position="dodge", width=0.75)+
+  #(position="stack", stat="identity") 
+  geom_text(aes(label=response), vjust=-1.6, #color="white",vjust=-0.3, 
+            position = position_dodge(0.9), size=2.5)+
+  theme_minimal()
+print(p)
+  }
+}
+
+# Plot
+  ggplot.dfgroup<-data.frame(ggplot.dfgroup)     
+  names(ggplot.dfgroup)<-c("Cell","response","group")
+  table(ggplot.dfgroup$group)
+
+  ggplot(data=ggplot.dfgroup, aes(x=Cell, y=response, group=group
+                                  ,  color=group))  +
+    geom_line()
+  
+```  
+  
+
+```{r}
+opt.vmax<-ggplot.df[ggplot.df$response1==max(ggplot.df$response1),]
+opt.vmax$cretria<-"max"
+opt.vmax$optv<-max(ggplot.df$response1)
+opt.vmax
+opt.vmin<-ggplot.df[ggplot.df$response1==min(ggplot.df$response1),]
+opt.vmin$cretria<-"min"
+opt.vmin$optv<-min(ggplot.df$response1)
+opt.vmin
+
+Target<-mean(ggplot.df$response1)
+cretria<-((ggplot.df$response1-Target)^2)
+  opt.cretria<-min(cretria)
+  cretria<-data.frame(cretria)
+  cretria$x<-x
+  opt.x<-cretria[cretria$cretria==opt.cretria,"x"]
+  opt.vtarget<-ggplot.df[opt.x,]
+ opt.vtarget$cretria<-"target"
+  opt.vtarget$optv<-opt.cretria
+  
+Target<-mean(ggplot.df$response1)
+cretria<-((ggplot.df$response1-Target)^2+1*(ggplot.df$response2)^2)
+  opt.cretria<-min(cretria)
+  cretria<-data.frame(cretria)
+  cretria$x<-x
+  opt.x<-cretria[cretria$cretria==opt.cretria,"x"]
+  opt.vse<-ggplot.df[opt.x,]
+ opt.vse$cretria<-"se"
+  opt.vse$optv<-opt.cretria
+
+opt.vmse<-data.frame()
+#for (lam in seq(0,20,5)) {
+#  cretria<-((ggplot.df$response1)^2 - lam*(ggplot.df$response2)^2)
+for (lam in seq(-5,5,1)) {
+#  cretria<-((ggplot.df$response1)^2 - lam*(ggplot.df$response2)^2)
+    cretria<-((ggplot.df$response1) + lam*(ggplot.df$response2))
+  opt.cretria<-max(cretria)
+  cretria<-data.frame(cretria)
+  cretria$x<-x
+  opt.x<-cretria[cretria$cretria==opt.cretria,"x"]
+  temp<-ggplot.df[opt.x,]
+    temp$optv<-opt.cretria
+  opt.vmse<-rbind(opt.vmse,temp)
+}
+opt.vmse$cretria<-"weighted mse"
+
+out.df<-rbind(opt.vmax,opt.vmin,opt.vtarget,opt.vse,opt.vmse)
+ls(out.df)
+nrow<-nrow(out.df)
+row<-seq(1:nrow)
+out.df<-cbind(row,out.df[,c("cretria","Cell","response1",
+                            "response1se","response2","response2se","optv")])
+out.df$block<-floor(out.df$Cell/4)
+out.df$treatment<-out.df$Cell%%4#floor(temp$Cell/4)
+xtable(out.df)
+
+```
+
+#########
+  
+```{r}
+out.df$Cell
+
+  line.df<-ggplot.dfgroup
+  ts=max(line.df$group)
+  
+  {
+for (i in seq(1)) {
+  line.dfg<-line.df[line.df$group==i,]
+  {
+  plot(line.dfg$Cell,line.dfg$response, 
+       ylim = range(0,1.3)
+       ,xlab="Cell", ylab="Value"
+        ,col=c(i)
+   , lwd=2)
+
+  lines(line.dfg$Cell,line.dfg$response)
+  }
+}
+  
+  for (i in seq(1:(ts-2))) {
+    line.dfg<-line.df[line.df$group==i,]
+      {
+      lines(line.dfg$Cell,line.dfg$response
+      ,col=c(i)
+   , lwd=2)
+         points(line.dfg$Cell,line.dfg$response)
+      }
+  }
+#      legend("right", legend=c("resp1.m", "resp2.m", "resp1.se", "resp2.se"),
+ # legend(1,0.6, legend=c("median", "dispersion"),
+     legend("topleft", legend=c("median", "dispersion"),
+    col=c(1:4) , 
+    lwd=2)
+  }
+  grid()
+  abline(v =out.df$Cell, col="brown", lwd=2, lty=2)
+  Target<-mean(line.df[line.df$group==1,2])
+    abline(h =Target, col="blue", lwd=2, lty=2)
+```
+
+## Solution for each blocks
+
+```{r}
+
+
+opt.bmse<-data.frame()
+cretria.df<-data.frame()
+for (i in seq(1:4)) {
+#  bi<-c(i,i+1*4,i+2*4,i+3*4)
+    bi<-c(4*(i-1)+1,4*(i-1)+2,4*(i-1)+3,4*(i-1)+4)
+  logic.bi<-ggplot.df$Cell==bi[1]|ggplot.df$Cell==bi[2]|ggplot.df$Cell==bi[3]|ggplot.df$Cell==bi[4]
+  block.df<-ggplot.df[logic.bi,]
+for (lam in seq(1)) {#seq(0,20,5)
+#  cretria<-((block.df$response1)^2 - lam*(block.df$response2)^2)
+    cretria<-((block.df$response1) - lam*(block.df$response2))
+    cretria.df<-rbind(cretria.df,cretria)
+    names(cretria.df)<-c("1","2","3","4")
+  opt.cretria<-max(cretria)
+  cretria<-data.frame(cretria)
+  cretria$x<-seq(1:4)
+  opt.x<-cretria[cretria$cretria==opt.cretria,"x"]
+  temp<-block.df[opt.x,]
+    temp$optv<-opt.cretria
+    temp$block<-i
+    temp$treatment<-temp$Cell%%4
+}
+    
+    opt.bmse<-rbind(opt.bmse,temp)
+      opt.bmse$block<-ceiling(opt.bmse$Cell/4)
+      opt.bmse$treatment<-opt.bmse$Cell%%4#floor(temp$Cell/4)
+}
+xtable(opt.bmse)
+```
+
+
+```{r}
+library(reshape2)
+
+for (i in seq(1:3)) {
+  if(i==1|i==2){
+      names(ggplot.df)<-c("1","2","3","4")
+    plot.mat<-ggplot.df
+     ind<-i+1
+  dat <- melt(matrix(plot.mat[, ind],nrow=4,ncol=4))
+  }else{
+     names(cretria.df)<-c("1","2","3","4")
+   plot.mat<- cretria.df
+   dat <- melt(t(as.matrix(plot.mat)))
+  }
+
+    library(ggplot2)
+    {
+      p <- ggplot(data =  dat, aes(x = Var1, y = Var2)) +
+      geom_tile(aes(fill = value), colour = "white") +
+      geom_text(aes(label = sprintf("%1.2f",value)), vjust = 1) +
+      scale_fill_gradient(low = "white", high = "steelblue") +
+      labs(x ="treatment", y = "block") +
+      theme(legend.position = "none")
+       if(i==1){
+        p1<-p
+        }else if(i==2){
+        p2<-p
+        }else{
+        p3<-p
+        }
+    }
+  
+ 
+}
+library("gbm")
+library(gridExtra)
+#multiplot(p1, p2, p3, cols=3)
+grid.arrange(p1, p2, p3, nrow = 1)
+mean.global<-c(mean(cretria.df$`1`),mean(cretria.df$`2`),mean(cretria.df$`3`),mean(cretria.df$`4`))
+mean.global<-round(mean.global,3)
+mean.global
+
+mean.local<-mean(opt.bmse$optv)
+mean.local
+```
+
+
+##Response 1
+
+
+```{r}
+
+for (i in seq(1)) {
+  print("###############LR with dual responses################")
+  if(i==1|i==2){
+      names(ggplot.df)<-c("1","2","3","4")
+    plot.mat<-ggplot.df
+     ind<-i+1
+  dat <- melt(matrix(plot.mat[, ind],nrow=4,ncol=4))
+  }else{
+     names(cretria.df)<-c("1","2","3","4")
+   plot.mat<- cretria.df
+   dat <- melt(t(as.matrix(plot.mat)))
+  }
+  df.lr<-dat
+  for (ind in seq(1:16)) {
+    if(df.lr[ind,"Var1"]==1){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<--1
+  }else if(df.lr[ind,"Var1"]==2){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<-1
+  }else if(df.lr[ind,"Var1"]==3){
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<--1
+  }else{
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<-1
+  }
+}
+  ##LR
+    lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2, data = df.lr)
+  print(summary(lrq.mat))
+  xtable(aov(lrq.mat))
+  res.aov <- aov(value~x1+x2+x1*x2, data = df.lr)
+   print(summary(res.aov))
+print( xtable(aov(res.aov),digits = 4))
+       print("################above: x1+x2+x1*x2################")
+   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var2, data = df.lr)
+  print(summary(lrq.mat))
+  xtable(aov(lrq.mat))
+  res.aov <- aov(value~x1+x2+x1*x2+Var2, data = df.lr)
+   print(summary(res.aov))
+print( xtable(aov(res.aov),digits = 4))
+  # Summary of  var 1 and var 2
+   print("################above: x1+x2+x1*x2+Var2################")
+res.aov <- aov(value~Var1+Var2+Var1*Var2, data = df.lr)
+print(summary(res.aov))
+  lrq.mat<-lm(value~Var1+I(Var1^2)+Var2+I(Var2^2)+Var1*Var2, data = df.lr)
+   lrq.mat<-lm(value~I(Var1^2)+I(Var1^3)+Var2+Var1*Var2, data = df.lr)
+ lrq.mat$coefficients 
+ print(summary(lrq.mat))
+   print("################above: Var1+Var2+Var1*Var2################")
+}
+```
+
+
+##Response 2
+
+
+```{r}
+##Not seq(2)
+for (i in c(2)) {
+  print("###############LR with dual responses################")
+  if(i==1|i==2){
+      names(ggplot.df)<-c("1","2","3","4")
+    plot.mat<-ggplot.df
+     ind<-i+1
+  dat <- melt(matrix(plot.mat[, ind],nrow=4,ncol=4))
+  }else{
+     names(cretria.df)<-c("1","2","3","4")
+   plot.mat<- cretria.df
+   dat <- melt(t(as.matrix(plot.mat)))
+  }
+  df.lr<-dat
+  for (ind in seq(1:16)) {
+    if(df.lr[ind,"Var1"]==1){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<--1
+  }else if(df.lr[ind,"Var1"]==2){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<-1
+  }else if(df.lr[ind,"Var1"]==3){
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<--1
+  }else{
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<-1
+  }
+}
+  ##LR
+    lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2, data = df.lr)
+  print(summary(lrq.mat))
+  xtable(aov(lrq.mat))
+  res.aov <- aov(value~x1+x2+x1*x2, data = df.lr)
+   print(summary(res.aov))
+ print( xtable(aov(res.aov),digits = 4))
+      print("###############above: x1+x2+x1*x2################")
+   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var2, data = df.lr)
+  print(summary(lrq.mat))
+  xtable(aov(lrq.mat))
+  res.aov <- aov(value~x1+x2+x1*x2+Var2, data = df.lr)
+   print(summary(res.aov))
+print( xtable(aov(res.aov),digits = 4))
+  # Summary of  var 1 and var 2
+  print("################above: x1+x2+x1*x2+Var2################")
+res.aov <- aov(value~Var1+Var2+Var1*Var2, data = df.lr)
+print(summary(res.aov))
+  lrq.mat<-lm(value~Var1+I(Var1^2)+Var2+I(Var2^2)+Var1*Var2, data = df.lr)
+   lrq.mat<-lm(value~I(Var1^2)+I(Var1^3)+Var2+Var1*Var2, data = df.lr)
+ lrq.mat$coefficients 
+ print(summary(lrq.mat))
+ print("###############above:Var1+Var2+Var1*Var2################")
+}
+```
+
+
+```{r}
+
+for (i in seq(1:3)) {
+  print("###############LR with dual responses################")
+  if(i==1|i==2){
+      names(ggplot.df)<-c("1","2","3","4")
+    plot.mat<-ggplot.df
+     ind<-i+1
+  dat <- melt(matrix(plot.mat[, ind],nrow=4,ncol=4))
+  }else{
+     names(cretria.df)<-c("1","2","3","4")
+   plot.mat<- cretria.df
+   dat <- melt(t(as.matrix(plot.mat)))
+  }
+  df.lr<-dat
+  for (ind in seq(1:16)) {
+    if(df.lr[ind,"Var1"]==1){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<--1
+  }else if(df.lr[ind,"Var1"]==2){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<-1
+  }else if(df.lr[ind,"Var1"]==3){
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<--1
+  }else{
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<-1
+  }
+}
+  ##LR
+    lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2, data = df.lr)
+  print(summary(lrq.mat))
+  xtable(aov(lrq.mat))
+  res.aov <- aov(value~x1+x2+x1*x2, data = df.lr)
+   print(summary(res.aov))
+ xtable(aov(res.aov))
+     
+   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var2, data = df.lr)
+  print(summary(lrq.mat))
+  xtable(aov(lrq.mat))
+  res.aov <- aov(value~x1+x2+x1*x2+Var2, data = df.lr)
+   print(summary(res.aov))
+ xtable(aov(res.aov))
+  # Summary of  var 1 and var 2
+res.aov <- aov(value~Var1+Var2+Var1*Var2, data = df.lr)
+print(summary(res.aov))
+  lrq.mat<-lm(value~Var1+I(Var1^2)+Var2+I(Var2^2)+Var1*Var2, data = df.lr)
+   lrq.mat<-lm(value~I(Var1^2)+I(Var1^3)+Var2+Var1*Var2, data = df.lr)
+ lrq.mat$coefficients 
+ print(summary(lrq.mat))
+ print("###############LR with dual responses################")
+}
+```
+
+###0/1 setting
+
+```{r}
+
+for (i in seq(1:3)) {
+   print("###############LR with dual responses################",i)
+  if(i==1|i==2){
+      names(ggplot.df)<-c("1","2","3","4")
+    plot.mat<-ggplot.df
+     ind<-i+1
+  dat <- melt(matrix(plot.mat[, ind],nrow=4,ncol=4))
+  }else{
+     names(cretria.df)<-c("1","2","3","4")
+   plot.mat<- cretria.df
+   dat <- melt(t(as.matrix(plot.mat)))
+  }
+  df.lr<-dat
+  for (ind in seq(1:16)) {
+    if(df.lr[ind,"Var1"]==1){
+    df.lr[ind,"x1"]<-0
+    df.lr[ind,"x2"]<-0
+  }else if(df.lr[ind,"Var1"]==2){
+    df.lr[ind,"x1"]<-0
+    df.lr[ind,"x2"]<-1
+  }else if(df.lr[ind,"Var1"]==3){
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<-0
+  }else{
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<-1
+  }
+  }
+  ##LR
+  lr.mat<-lm(value~x1+x2+Var2, data = df.lr)
+ lr.mat$coefficients 
+ summary(lr.mat)
+ 
+   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var2, data = df.lr)
+# lrq.mat$coefficients 
+ print(summary(lrq.mat))
+  print("###############LR with dual responses################")
+
+}
+```
+
+
+
+```{r}
+# 
+# for (i in seq(1:3)) {
+#   if(i==1|i==2){
+#       names(ggplot.df)<-c("1","2","3","4")
+#     plot.mat<-ggplot.df
+#      ind<-i+1
+#   dat <- melt(matrix(plot.mat[, ind],nrow=4,ncol=4))
+#   }else{
+#      names(cretria.df)<-c("1","2","3","4")
+#    plot.mat<- cretria.df
+#    dat <- melt(t(as.matrix(plot.mat)))
+#   }
+#   df.lr<-dat
+#   for (ind in seq(1:16)) {
+#     if(df.lr[ind,"Var2"]==1){
+#     df.lr[ind,"x1"]<--1
+#     df.lr[ind,"x2"]<--1
+#   }else if(df.lr[ind,"Var2"]==2){
+#     df.lr[ind,"x1"]<--1
+#     df.lr[ind,"x2"]<-1
+#   }else if(df.lr[ind,"Var2"]==3){
+#     df.lr[ind,"x1"]<-1
+#     df.lr[ind,"x2"]<--1
+#   }else{
+#     df.lr[ind,"x1"]<-1
+#     df.lr[ind,"x2"]<-1
+#   }
+#   }
+#   ##LR
+#     lr.mat<-glm(value~Var1+Var2+Var1:Var2, data = df.lr)
+#  lr.mat$coefficients 
+#  summary(lr.mat)
+#  
+#   lr.mat<-glm(value~x1+x2+Var1, data = df.lr)
+#  lr.mat$coefficients 
+#  summary(lr.mat)
+#  
+#    lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var1, data = df.lr)
+#  lrq.mat$coefficients 
+#  print(summary(lrq.mat))
+#  
+#  
+#  aov.lm<-aov(lr.mat, data = df.lr)
+#   print(aov.lm)   
+# # Compute the analysis of variance
+# res.aov <- aov(value~x1+x2+x1*x2+Var1, data = df.lr)
+# # Summary of the analysis
+# summary(res.aov)
+# 
+# 
+#   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2, data = df.lr)
+#  lrq.mat$coefficients 
+#  print(summary(lrq.mat))
+#  
+# res.aov <- aov(value~x1+x2+x1*x2, data = df.lr)
+# # Summary of the analysis
+# print(summary(res.aov))
+# 
+# 
+# # Summary of  var 1 and var 2
+# res.aov <- aov(value~Var1+Var2+Var1*Var2, data = df.lr)
+# print(summary(res.aov))
+#   lrq.mat<-lm(value~Var1+I(Var1^2)+Var2+I(Var2^2)+Var1*Var2, data = df.lr)
+#    lrq.mat<-lm(value~I(Var1^2)+I(Var1^3)+Var2+Var1*Var2, data = df.lr)
+#  lrq.mat$coefficients 
+#  print(summary(lrq.mat))
+#   print("########LR with dual responses###############################")
+#  
+# }
+print("blocking")
+```
+
+
+
+```{r}
+
+ lrq.rcbd<-lm(value~Var1+Var2, data = df.lr)
+ lrq.rcbd$coefficients 
+ summary(lrq.rcbd)
+ aov(lrq.rcbd)
+```
+
+
+#Block values
+
+
+```{r}
+ls(sur.df)
+sur.vdf<-sur.df[,c("ps","block","Cell","indA","indB","T")]
+sur.vdf$Topt<-4
+sur.vdf$Toptv<-0.92
+for (bi in seq(1:4)) {
+  if(bi==1){
+    sur.vdf[sur.vdf$block==bi,"Toptv"]<-0.92
+  }else if(bi==2){
+    sur.vdf[sur.vdf$block==bi,"Toptv"]<-0.93
+  }else if(bi==3){
+    sur.vdf[sur.vdf$block==bi,"Toptv"]<-0.95
+  }else {
+    sur.vdf[sur.vdf$block==bi,"Toptv"]<-0.84
+  }
+}
+
+sur.vdf$Tdoptv<-0.92
+for (bi in seq(1:4)) {
+  if(bi==1){
+    sur.vdf$Tdopt<-4
+    sur.vdf[sur.vdf$block==bi,"Tdoptv"]<-0.92
+  }else if(bi==2){
+    sur.vdf$Tdopt<-4
+    sur.vdf[sur.vdf$block==bi,"Tdoptv"]<-0.93
+  }else if(bi==3){
+    sur.vdf$Tdopt<-4
+    sur.vdf[sur.vdf$block==bi,"Tdoptv"]<-0.95
+  }else {
+    sur.vdf$Tdopt<-3
+    sur.vdf[sur.vdf$block==bi,"Tdoptv"]<-0.89
+  }
+}
+
+ 
+
+head(sur.vdf)
+{
+  plot(sur.vdf$ps,sur.vdf$Tdoptv,col=(1), lty=1,ylim = range(0,1), 
+       ylab = "Value", xlab = "balance score")
+  abline(h =c(mean.local), col=c(1), lwd=2, lty=1)#
+  points(sur.vdf$ps,sur.vdf$Toptv,col=(2), lty=2)
+  abline(h =c(mean.global[4]), col=c(2), lwd=2, lty=2)#
+  lines(ecdf(sur.vdf$ps), col=c(3), lty=3)
+#  quantile(sur.df$ps, probs = seq(0, 1, 0.25), na.rm = FALSE)
+  abline(v =qvalue[2:4], col=c(4), lwd=2, lty=4)
+#  grid()
+   
+  legend("bottomright", legend=c("T=3", "T=4","CDF","Quantile"),
+       col=c(1:4), lty=c(1:4), cex=0.8)
+}
+
+```
+
+##  Tvm<-4
+```{r}
+
+
+## ----EpsInd,echo=FALSE, fig.width = 5, fig.height = 5---------------------
+## Figure 1) Left
+library("GPareto", quietly = TRUE)
+# Pareto front creation
+# Plot epsilon indicator
+{
+    rangex<-range(ggplot.df[,2])
+  rangey<-range(ggplot.df[,3])
+  ParetoRef<- ggplot.df[c(1:4),c(2,3)]
+   plot(ParetoRef, xlim = c(rangex[1]-0.02,rangex[2]+0.02), 
+        ylim = c(rangey[1]-0.02,rangey[2]+0.02),  
+        pch =0, 
+       cex = 2, col = c(12), 
+     bg =  c(21), bty = "l",
+#     xlab = expression(f[1]), ylab = expression(f[2]))
+     xlab = expression(eta^p), ylab = expression(eta^s))
+  
+  for (bi in seq(1:4)) {
+    indb<-c((bi-1)*4+1,(bi-1)*4+2,(bi-1)*4+3,(bi-1)*4+4)
+    ParetoRef <- ggplot.df[indb,c(2,3)]
+    if(bi==1){
+       points(ParetoRef, pch = 0,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    } else if(bi==2){
+       points(ParetoRef, pch =1,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    }else if(bi==3){
+       points(ParetoRef, pch =5,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    }else{
+       points(ParetoRef, pch = 6,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    }
+ 
+  }
+grid()
+
+{
+   Tvm<-4
+  ParetoRef<-ggplot.df[c(Tvm,Tvm+4,Tvm+2*4,Tvm+3*4),c(2,3)]
+plotParetoEmp(ParetoRef, col =c(5), lwd = 2, lty = 6)
+
+}
+
+{
+  ParetoRef<-ggplot.df[opt.bmse$Cell,c(2,3)]
+plotParetoEmp(ParetoRef, col =c(6), lwd = 2, lty = 5)
+
+}
+
+
+legend("topleft",   legend=c("Block1", "Block2","Block3","Block4"),
+       #col=c(1:4), 
+       pch = c(0,1,5,6),  cex=0.8)
+
+legend("topright",  legend=c( "VM", "COSTAR"),
+       #legend=c("Block1", "Block2","Block3","Block4"),
+       col=c(5,6), lty=c(5,6),  cex=0.8)
+}
+
+legend("bottomleft",  legend=( expression({c(bar(A1),bar(A2))}, 
+                                     {c(bar(A1),A2)},
+                                    {c(A1,bar(A2))},
+                                    {c(A1,A2)})
+                           ),
+    
+       col=c(1:4), lty = c(1),#pch = c(0,1,5,6),  
+       cex=0.8)
+
+```
+
+
+
+
+#nonparallel slopes; but discountinous
+```{r}
+head(ggplot.df)
+#####
+names(ggplot.df)<-c("group","rep1","rep2","rep1se","rep2se")
+ # line.df<-ggplot.df[,1:3]
+  line.dfrep<-ggplot.df[,2]-ggplot.df[,3]
+  line.dfrepmat<-matrix(line.dfrep,ncol = 4)
+  line.dfreptre<-t(line.dfrepmat)
+  line.df<-line.dfreptre
+  line.df<-data.frame(line.df)
+  names(line.df)<-c("B1","B2","B3","B4")  
+  {
+    minr<-min(line.df)-0.05
+    maxr<-max(line.df)+0.15
+      plot(x=seq(1:4),as.numeric(line.df[,1]),ylim = range(minr,maxr), 
+           xlab = c("Blocks"), ylab = expression(L(A)),xaxt='n')
+      axis(side = 1, at=1:4)
+#    lines(line.df[,1])
+    for (bi in seq(1:4)) {
+  #    bi<-ind
+       dfl<-line.df[,bi]
+       names(dfl)<-c("T1","T2","T3","T4") 
+       lines(dfl,  pch = c(bi),
+       cex = 2, col = c(bi),      bg = c(bi+4), lwd=2, lty=c(bi),
+     bty = "l")
+    }
+#      lines(line.df[,3],  pch = c(bi),
+#       cex = 2, col = c(bi),      bg = c(bi+4), lwd=2, lty=c(bi),    bty = "l")
+      legend("topleft",legend=( expression({c(bar(A1),bar(A2))}, 
+                                     {c(bar(A1),A2)},
+                                    {c(A1,bar(A2))},
+                                    {c(A1,A2)})
+                           ), 
+             #legend=c("T1","T2","T3","T4") ,
+    col=c(1:4) ,#  pch = c(1:4),
+    lty=c(1:4),
+    lwd=2)
+      legend("topright", legend=c("VM","COSTAR") ,
+   pch = c(21,22)#,lwd=2
+    )
+      
+  grid()
+  ####(4,4)-->(3,4)
+  for (ti in seq(1:4)) {
+        points(x = ti, y = line.dfrepmat[4,ti],  col = "brown",lwd=3, #bg = "blue", 
+               pch = 20, cex = 2)
+    #COSTAR; VM
+ points(x = 4, y = line.dfrepmat[3,4],  col = "brown", lwd=3,bg = "blue", pch = 22, cex = 2)
+  points(x = 4, y = line.dfrepmat[4,4],  col = "brown",lwd=3, bg = "white", pch = 21, cex = 2)
+  
+  
+##  meanvm<-mean(line.dfrepmat[4,])
+##  abline(h =meanvm, col=c(10), lwd=1, lty=1)
+    ####(4,4)-->(3,4)
+##    meancvm<-mean(c(line.dfrepmat[4,c(1,2,3)]),line.dfrepmat[4,4])
+##  abline(h =meancvm, col=c(10), lwd=1, lty=1)
+##  arrows(1.5, meanvm, 1.5, meancvm, code = 2, length = 0.1, col =c(10))
+}
+  }
+```
+
+
+##Prediction for the solutions
+```{r}
+head(line.dfrep)
+pred.soldf<- line.dfrep
+pred.soldf<-data.frame(pred.soldf)
+for(i in seq(1:4)){
+    for(j in seq(1:4)){
+      ind<-(i-1)*4+j
+      if (j<3){
+        pred.soldf[ind,"A1"]<-0
+        {
+          if (j%%2==1){
+        pred.soldf[ind,"A2"]<-0
+         pred.soldf[ind,"T"]<-1
+      }else  {
+        pred.soldf[ind,"A2"]<-1
+       pred.soldf[ind,"T"]<-2
+
+      }
+        }
+      }else  if (j>2){
+        pred.soldf[ind,"A1"]<-1
+        {
+          if (j%%2==1){
+        pred.soldf[ind,"A2"]<-0
+         pred.soldf[ind,"T"]<-3
+
+      }else {
+        pred.soldf[ind,"A2"]<-1
+       pred.soldf[ind,"T"]<-4
+
+      }
+        }
+      } 
+        pred.soldf[ind,"B"]<-i          
+    }
+}
+    
+library("xtable")
+names(pred.soldf)<-c("resp","A1","A2","T","B")
+model.drs<-lm(resp~.,data =pred.soldf[,c(1:3)])
+model.drs<-lm(resp~A1+A2+A1:A2,data =pred.soldf[,c(1:3)])
+summary(model.drs)
+xtable(aov(model.drs))
+aov(model.drs)
+
+model.drs<-lm(resp~.,data =pred.soldf[,c(1:3,5)])
+model.drs<-lm(resp~A1+A2+A1:A2+B,data =pred.soldf[,c(1:3,5)])
+summary(model.drs)
+xtable(aov(model.drs))
+aov(model.drs)
+print(aov(model.drs))
+anova(model.drs)
+pred.m<-predict(model.drs)
+#p.roc(pred.m,pred.soldf$resp)
+  pred.soldf<-data.frame(pred.soldf)
+MSPE.p<-mean((pred.m-pred.soldf$resp)^2)
+
+  pred.soldf$pred<-pred.m
+###Population /blocks, responses
+mean.tdf<-data.frame()
+for  (ti in seq(1:4)){
+  pred.st<-pred.soldf[pred.soldf$T==ti,]
+  pred.st<-data.frame(pred.st)
+   mean.t<-mean(pred.st$resp)
+     mean.tdf<-rbind(mean.tdf,mean.t)
+}
+
+###Population /blocks, prediction 
+          mean.tpdf<-data.frame()
+for  (ti in seq(1:4)){
+  pred.stp<-pred.soldf[pred.soldf$T==ti,]
+  pred.stp<-data.frame(pred.stp)
+   mean.tp<-mean(pred.stp$pred)
+     mean.tpdf<-rbind(mean.tpdf,mean.tp)
+}
+          
+  mean.top<-cbind(mean.tdf,mean.tpdf)        
+  names(mean.top)<-c("repmeant","predmeant")
+
+  mean.top$bias<-mean.top$repmeant-mean.top$predmeant
+  print(mean.top)
+```
+
+
+
+
+
+##Variance
+
+##Variance
+
+```{r}
+t1<-4
+t2<-4
+t3<-4
+t4<-3
+
+var1<-var(pred.soldf[pred.soldf$T==t1,"pred"])
+var2<-var(pred.soldf[pred.soldf$T==t2,"pred"])
+var3<-var(pred.soldf[pred.soldf$T==t3,"pred"])
+var4<-var(pred.soldf[pred.soldf$T==t4,"pred"])
+
+avgvar<-mean(var1,var2,var3,var3)
+avgvar
+
+
+meanv<-mean(mean.tpdf[t1,],mean.tpdf[t2,],mean.tpdf[t3,],mean.tpdf[t4,])
+
+sumv<-sum((meanv-mean.tpdf[t1,])^2,(meanv-mean.tpdf[t2,])^2,
+          (meanv-mean.tpdf[t3,])^2,(meanv-mean.tpdf[t4,])^2)
+brv<-sumv/(4-1)
+
+Sigma<-avgvar+(1+1/4)*brv
+
+Sigma
+var1
+```
+
+
+
+##  Tvm<-4; negative (eta s)
+```{r}
+
+ggplot.negdf<-ggplot.df
+ggplot.negdf$rep2<-(-ggplot.df$rep2)
+## ----EpsInd,echo=FALSE, fig.width = 5, fig.height = 5---------------------
+## Figure 1) Left
+library("GPareto", quietly = TRUE)
+# Pareto front creation
+# Plot epsilon indicator
+
+{
+    rangex<-range(ggplot.negdf[,2])
+  rangey<-range(ggplot.negdf[,3])
+  ParetoRef<- ggplot.negdf[c(1:4),c(2,3)]
+   plot(ParetoRef, xlim = c(rangex[1]-0.02,rangex[2]+0.02), 
+        ylim = c(rangey[1]-0.02,rangey[2]+0.02),  
+        pch =0, 
+       cex = 2, col = c(12), 
+     bg =  c(21), bty = "l",
+#     xlab = expression(f[1]), ylab = expression(f[2]))
+     xlab = expression(eta^p), ylab = expression(-eta^s))
+  
+  for (bi in seq(1:4)) {
+    indb<-c((bi-1)*4+1,(bi-1)*4+2,(bi-1)*4+3,(bi-1)*4+4)
+    ParetoRef <- ggplot.negdf[indb,c(2,3)]
+    if(bi==1){
+       points(ParetoRef, pch = 0,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    } else if(bi==2){
+       points(ParetoRef, pch =1,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    }else if(bi==3){
+       points(ParetoRef, pch =5,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    }else{
+       points(ParetoRef, pch = 6,  # pch = c(0,1,5,6), 
+       cex = 2, col = c(1:4), 
+     bg = c(bi+4), 
+     bty = "l")
+    }
+ 
+  }
+grid()
+
+{
+   Tvm<-4
+  ParetoRef<-ggplot.negdf[c(Tvm,Tvm+4,Tvm+2*4,Tvm+3*4),c(2,3)]
+plotParetoEmp(ParetoRef, col =c(5), lwd = 2, lty = 6)
+
+}
+
+{
+  ParetoRef<-ggplot.negdf[opt.bmse$Cell,c(2,3)]
+plotParetoEmp(ParetoRef, col =c(6), lwd = 2, lty = 5)
+
+}
+
+
+legend("topleft",   legend=c("Block1", "Block2","Block3","Block4"),
+       #col=c(1:4), 
+       pch = c(0,1,5,6),  cex=0.8)
+
+legend("bottomright",  legend=c( "VM", "COSTAR"),
+       #legend=c("Block1", "Block2","Block3","Block4"),
+       col=c(5,6), lty=c(5,6),  cex=0.8)
+}
+
+legend("bottomleft",  legend=( expression({c(bar(A1),bar(A2))}, 
+                                     {c(bar(A1),A2)},
+                                    {c(A1,bar(A2))},
+                                    {c(A1,A2)})
+                           ),
+    
+       col=c(1:4), lty = c(1),#pch = c(0,1,5,6),  
+       cex=0.8)
+
+```

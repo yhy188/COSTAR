@@ -1,0 +1,687 @@
+---
+title: "CVM: Constrained variational optimization model with factorial designs"
+author: "haiyan yu"
+date: "7/16/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+This document presents the stream of data processing, and the dignosis of the model. The four parts of diagnosis consist of discrepancy for blance check, trajectories of sampling, KLD for sampling compressiveness, parameter of the estimation (informativeness)  and the value of both the  compressiveness and  the informativeness. 
+causal variational model
+1,  dataxx[Treat.df == 1,"y"]):   total samples, not only the treatment group data, cwdf_ebal;
+  
+2,  cwdf_ebal[Treat.df == 1,"y"]):  only the treatment group data, cwdf_ebal;
+    cwdf_ebalT <- cwdf_ebal[treatment == 1,]
+    
+3, weights for the control, not selected  
+  
+# Data preperation
+```{r}
+library("roxygen2")
+library("readxl")
+#library("CORopt")
+library("cvmfd")
+library(LaplacesDemon)
+library(xtable)
+#########
+data <-
+ suppressWarnings(data <-read_excel("~/Downloads/Rpkg/CORopt/data/USyu_AB_Med0UA1c_test.xlsx"))
+#summary(data)#1: over 30; 0 :less 30
+ls(data)
+names(data)
+head(data, 1)
+nrow(data)
+df.ctl<-data[data$metformin==0 &data$glyburide==0&data$`glyburide-metformin`==0,]
+nrow(df.ctl)
+#table(data$race,data$age)
+table(data$age,data$readmitted)
+#table(data$race,data$readmitted)
+datax <- data[, c(6:21)]
+df.sample<-head(data[, c(6:21)][, c(4,1:3,7,12,13:15)],8)
+df.samplea3<-head(data[, c(6:21)][data$`glyburide-metformin`==2, c(4,1:3,7,12,13:15)],2)
+df.samplea0<-head(data[, c(6:21)][data$`glyburide-metformin`==0&data$metformin==0&data$glyburide==0, c(4,1:3,7,12,13:15)],2)
+xtable(df.sample)
+xtable(df.samplea3)
+xtable(df.samplea0)
+names(datax) <-
+  c(
+    "x1",
+    "x2",
+    "x3",
+    "x4",
+    "x5",
+    "x6",
+    "x7",
+    "x8",
+    "x9",
+    "x10",
+    "x11",
+    "x12",
+    "a1",
+    "a2",
+    "a3",
+    "y"
+  )
+head(datax)
+##age =x4
+table(datax$x4)
+```
+
+# Data Stream
+
+Since there are missing and factor ('other') in the variables 'x2', those rows are removed by
+
+```{r}
+datax<-datax[datax$x2!='Other',]
+datax<-datax[datax$x2!='?',]
+#cwdf_ebal$x2<-as.numeric(cwdf_ebal$x2)
+datax$x2<-as.numeric(datax$x2)
+datax <- datax[complete.cases(datax), ]
+```
+# Data processing
+
+```{r}
+head(datax)
+dataxx <- datax
+dataxx[dataxx$a1 != 0, "a1"] <- 1
+dataxx[dataxx$a2 != 0, "a2"] <- 1
+dataxx[dataxx$a3 != 0, "a3"] <- 1
+dataxx[, "A"] <- 0
+dataxx[dataxx$a1 == 1, "A"] <- 1
+dataxx[dataxx$a2 == 1, "A"] <- 2
+dataxx[dataxx$a3 == 1, "A"] <- 3
+#######
+dataxx <- data.frame(dataxx)#summary(cweight) Inf
+table(dataxx$A)
+nrow(dataxx)
+#######
+```
+## Cweight: call for caseweight
+
+```{r}
+cweight_df <- data.frame(dataxx)
+for (i in seq(1:3)) {
+  dataxy <- (dataxx[, c(1:12, 12 + i)])
+  head(dataxy)
+  names(dataxy) <-
+    c("x1",
+      "x2",
+      "x3",
+      "x4",
+      "x5",
+      "x6",
+      "x7",
+      "x8",
+      "x9",
+      "x10",
+      "x11",
+      "x12",
+      "a")
+  cor_temp <- caseweight(dataxy)
+  #rename, denominator = in caseweight
+  #dataxy$sw <- c.weight
+  cweight_df <- cbind(cweight_df, cor_temp)
+}
+head(cweight_df)
+names(cweight_df) <-
+  c(
+    "x1",
+    "x2",
+    "x3",
+    "x4",
+    "x5",
+    "x6",
+    "x7",
+    "x8",
+    "x9",
+    "x10",
+    "x11",
+    "x12",
+    "a1",
+    "a2",
+    "a3",
+    "y",
+       "A",
+    "sw1",
+    "sw2",
+    "sw3" 
+  )
+head(cweight_df)
+######
+length(cweight_df$sw1)
+```
+
+
+#Discrepancy for blance check
+
+```{r}
+
+#############sw: weight for binary treatment with propensity score, not ebal
+for (i in seq(1:3)) {
+  dataxw <- cweight_df[, c(12 + i, 16 + i)]
+  head(dataxw)
+  wgtdensityplot(dataxw)
+}
+
+```
+
+
+###Block
+
+```{r}
+head(cweight_df)
+df.cbd<-cweight_df
+table(df.cbd$x4)
+df.cbd<-cweight_df
+df.cbd[df.cbd$x4<=4,"block"]<-1
+df.cbd[df.cbd$x4==5,"block"]<-2
+df.cbd[df.cbd$x4==6,"block"]<-3
+df.cbd[df.cbd$x4==7,"block"]<-4
+df.cbd[df.cbd$x4==8 |df.cbd$x4==9,"block"]<-5
+table(df.cbd$block)
+table(df.cbd$block,df.cbd$x4)
+table(df.cbd$block,df.cbd$A)
+```
+
+df.cbd[df.cbd$x4<=4,"block"]<-1
+df.cbd[df.cbd$x4==5,"block"]<-2
+df.cbd[df.cbd$x4==6,"block"]<-3
+df.cbd[df.cbd$x4==7,"block"]<-4
+df.cbd[df.cbd$x4==8 |df.cbd$x4==9,"block"]<-5
+  
+
+```{r}
+library(reshape2)
+  dfmean <- data.frame()
+  dfvar <- data.frame()
+  #ti<-4
+  for (ti in seq(1:4)) {
+    for (bi in seq(1:5)) {
+      df.block <- df.cbd[df.cbd$block == bi, ]
+      df.men <- df.block[df.block$A == (ti - 1), "y"]
+      temp <- mean(df.men)
+      dfmean <- rbind(dfmean, temp)
+      tempvar <- var(df.men)
+      dfvar <- rbind(dfvar, tempvar)
+    }
+  }
+
+  names(dfmean) <- c("mean")
+  names(dfvar) <- c("var")
+  mat.mea <- round(dfmean$mean, 3)
+  mat.var <- round(dfvar$var, 3)
+  mat.mean <- matrix(mat.mea, nrow = 5, ncol = 4)
+  mat.var <- matrix(mat.var, nrow = 5, ncol = 4)
+  mat.mvar <- cbind(mat.mean, mat.var)
+  print(mat.mvar)
+  dat <- melt(t(as.matrix(mat.mean)))
+  datvar <- melt(t(as.matrix(mat.var)))
+  dat.mvar <- cbind(dat, datvar[, 3])
+  print(dat.mvar)
+  names(dat.mvar) <- c("Var1", "Var2", "mean", "Var")
+  
+    blockplot(dat)
+    
+   pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/blockplot.pdf", width = 5, height = 4.8)
+  blockplot(dat)
+   dev.off()
+#mat.mean<-mat.mvar[,c(1:4)]
+
+```
+
+```{r}
+
+{
+p <- ggplot(dat.mvar, aes(x=Var2, y=mean, fill=as.factor(Var1))) + 
+   geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean-(Var/4), ymax=mean+(Var)/4), width=.2,
+                 position=position_dodge(.9)) + scale_fill_brewer(palette="Paired") + theme_minimal()+
+  ylim(0, 1.0)+
+  xlab("Subclass")+ylab("Treatment response")+ labs(fill = "Treatment")
+print(p)#;Stratum
+ 
+#save(p) 
+ggsave(filename="response.pdf", plot=p, width = 5, height = 4.8, 
+ units = "in") # other options c("in", "cm", "mm"), 
+}
+print(dat.mvar)
+```
+
+```{r}
+   print("###############LR with dual responses################")
+
+  df.lr<-dat
+  for (ind in seq(1:20)) {
+    if(df.lr[ind,"Var1"]==1){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<--1
+  }else if(df.lr[ind,"Var1"]==2){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<-1
+  }else if(df.lr[ind,"Var1"]==3){
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<--1
+  }else{
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<-1
+  }
+}
+  ##LR
+    lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2, data = df.lr)
+  print(summary(lrq.mat))
+  #xtable(aov(lrq.mat))
+  res.aov <- aov(value~x1+x2+x1*x2, data = df.lr)
+   print(summary(res.aov))
+print( xtable(aov(res.aov),digits = 4))
+       print("################above: x1+x2+x1*x2################")
+   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var2+x1*Var2+x2*Var2, data = df.lr)
+  print(summary(lrq.mat)) 
+   res.aov <- aov(value~x1+x2+x1*x2+x1*Var2+x2*Var2, data = df.lr)
+   print(summary(res.aov))
+print( xtable(aov(res.aov),digits = 4))
+
+```
+```{r}
+
+#####
+#names(ggplot.df)<-c("group","rep1","rep2","rep1se","rep2se")
+ # line.df<-ggplot.df[,1:3]
+#  line.dfrep<-ggplot.df[,2]-ggplot.df[,3]
+   print(pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/str.pdf", width = 5, height = 4.8))
+# respsurfaceplot5s(mat.mean) 
+  # xlab = c("Subclass") # Stratum xlab = c("Blocks")#, ylab = expression(V(A))
+   #        ylab=c("Objective V(A,Y)")
+# pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/str.pdf", width = 5, height = 4.8)
+# dev.off()
+  respsurfaceplot5s(mat.mean) 
+```
+  
+
+  
+```{r}
+head(dat.mvar)
+dat.mvar$Cell<-dat.mvar$Var1+(dat.mvar$Var2-1)*4
+
+    resp.df<-dat.mvar[,c(5,3,4)]
+    
+```
+
+## Solution for each blocks
+
+```{r}
+head(dat.mvar)
+#opt.bmse<-optcretria(dat.mvar,"min")
+opt.bmse<-optcretria5s(dat.mvar,"max")
+head(opt.bmse)
+xtable(opt.bmse)
+```
+##
+ebalnce use low corratina variables
+```{r}
+head(df.cbd)
+ cor(df.cbd[, c(1:12)])
+  cor(df.cbd[, c(1:3,7,12)])
+```
+
+```{r,warning=FALSE,echo=FALSE,include=FALSE,comment=NA}
+library(LaplacesDemon)
+table(df.cbd$block,df.cbd$A)
+df.cbd$Cell<-(df.cbd$A+1)+(df.cbd$block-1)*4
+head(df.cbd,1)
+table(df.cbd$Cell)
+df.mean<-data.frame()
+dist.out<-data.frame()
+    kldconv.df<-data.frame()
+    kldconv.dfc<-data.frame()
+    
+for (bi in seq(1:5)) {
+  eb.dfb<-df.cbd[df.cbd$block==bi,]
+  for (ti in seq(1:3)) {
+    table(eb.dfb$A)
+      eb.dfbt<-eb.dfb[eb.dfb$A==(ti-1)|eb.dfb$A==3,]
+      eb.dfbt$A<-eb.dfbt$A+1
+      eb.dfbt[eb.dfbt$A!=4,"T"]<-0
+      eb.dfbt[eb.dfbt$A==4,"T"]<-1
+head(eb.dfbt)
+table(eb.dfbt$Cell)
+table(eb.dfbt$T)
+## Weighting for two groups
+#############a1, control weight##################################
+library("ebal")
+cwdf_ebal<-eb.dfbt
+
+head(cwdf_ebal)
+####
+cwdf_ebal<-data.frame(cwdf_ebal)
+cwdfmis<-complete.cases(cwdf_ebal)
+cmisdf<-cwdf_ebal[!cwdfmis,]
+head(cmisdf)
+cwdf_ebal<-na.omit(cwdf_ebal)
+#head(cwdf_ebal)
+cwdf_ebalraw<-cwdf_ebal
+#cwdf_ebal<-cwdf_ebal[is.na(cwdf_ebal$x2),]
+treatment   <- cwdf_ebal[, "T"]
+ table(treatment)
+ #####16:y
+ X           <- cwdf_ebal[, c(1:12,23,16)]
+  treatment <- data.matrix(treatment)
+  X<-preprocess(X)
+#eb.out <- ebalance(X[,13],#Treatment =
+#                    X[, c(1:2)])#X =
+#KLD for sampling compressiveness
+########Iterations
+max.iterations=20#1000
+nq<-nrow(X[,])
+temp<-data.frame(rep(1/nq, nq))
+q<-(temp[1,])
+ntrt<-nrow(eb.dfbt)-sum(eb.dfbt$T)
+kldconv<-kldc(X,ntrt,max.iterations) 
+
+#Parameter of the estimation (informativeness)
+#mu0 for the estimation (informativeness), 
+#```{r,warning=false}
+ymu0<-data.frame(q)*(X[,14])
+ymu0mean<-sum(ymu0)/sum(q)
+ymu0mean
+df.mean<-meanfun(X,max.iterations)
+dist.out<-distcovariate(X)
+########
+df.mean
+#plot(tempmu$mu0)
+  head(kldconv)
+kldconv.df<-rbind(kldconv.df,round(kldconv[max.iterations,],3))
+kldconv.dfc<-rbind(kldconv.dfc,c(bi,ti,round(kldconv[max.iterations,],3)))
+names(kldconv.dfc)<-c("bi","ti","kld")
+  }
+  }
+names(kldconv.df)<-c("kld")
+kldconv.df
+kldconv.dfc
+dist.out
+```
+
+```{r}
+dist.out<-data.frame(dist.out)
+names(dist.out)<-c("block","treatment","dist")
+#temp<-dat.mvar[c(13:17),c(1:3)]
+temp<-dat.mvar[c(4,8,12,16,20),c(1:3)]
+names(temp)<-c("treatment","block","dist")
+temp$dist<-0
+temp<-temp[,c(2,1,3)]
+dist.outdf<-rbind(dist.out,temp)
+dist.outdf$Cell<-(dist.outdf$block-1)*4+dist.outdf$treatment
+dist.outdf<-dist.outdf[order(dist.outdf$Cell),]
+dist.outdf
+```
+```{r}
+kld.neg<-data.frame()
+kld.neg<-cbind(kldconv.dfc$bi,kldconv.dfc$ti,-(kldconv.dfc$kld))
+kld.neg<-data.frame(kld.neg)
+names(kld.neg)<-c("block","treatment","negkld")
+#temp<-dat.mvar[c(13:16),c(1:3)]
+#names(temp)<-c("block","treatment","negkld")
+temp<-dat.mvar[c(4,8,12,16,20),c(1:3)]
+names(temp)<-c("treatment","block","negkld")
+temp$dist<-0
+temp<-temp[,c(2,1,3)]
+temp$negkld<-0
+kld.neg<-rbind(kld.neg,temp)
+kld.neg$Cell<-(kld.neg$block-1)*4+kld.neg$treatment
+kld.neg<-kld.neg[order(kld.neg$Cell),]
+kld.neg
+```
+```{r}
+resp.df
+#0:2, vs. 3
+df.mean
+df.wgt<-rbind(df.mean,resp.df[c(4,8,12,16,20),])
+
+df.wgt<-round(df.wgt,3)
+df.wgt<-df.wgt[order(df.wgt$Cell),]
+df.wgt
+```
+
+```{r}
+dat.mvar<-df.wgt
+#Va1:Treat; Var2: Blcok
+head(dat.mvar)
+dat.mvar2<-dat.mvar
+dat.mvar2$Var1<-rep(1:4,5)
+dat.mvar2$Var2<-rep(1:5,each=4)
+#opt.bmse<-optcretria(dat.mvar,"min")
+#opt.bmse<-optcretria(dat.mvar,"max")
+#head(opt.bmse)
+#xtable(opt.bmse)
+#opt.cmr<-mean(opt.bmse$mean)
+#opt.cmr
+{
+p <- ggplot(dat.mvar2, aes(x=Var2, y=mean, fill=as.factor(Var1))) + 
+   geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean-(Var)/4, ymax=mean+(Var)/4), width=.2,
+                 position=position_dodge(.9)) + scale_fill_brewer(palette="Paired") + theme_minimal()+
+  xlab("Subclass")+ylab("Treatment response")+ labs(fill = "Treatment")
+print(p)#;Stratum
+ 
+#save(p) 
+ggsave(filename="responsewt.pdf", plot=p, width = 5, height = 4.8, 
+ units = "in") # other options c("in", "cm", "mm"), 
+}
+ print(dat.mvar2)
+ 
+   mat.meanwt <- matrix(dat.mvar2$mean, nrow = 4, ncol = 5)
+ datwt <- melt((as.matrix(mat.meanwt)))
+#  datvar <- melt(t(as.matrix(mat.var)))
+#  dat.mvar <- cbind(dat, datvar[, 3])
+ # print(dat.mvar)
+ # names(dat.mvar) <- c("Var1", "Var2", "mean", "Var")
+ 
+    blockplot(datwt)
+    
+    {
+   pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/blockplotwt.pdf", width = 5, height = 4.8)
+  blockplot(datwt)
+   dev.off()  
+}
+   
+```
+
+```{r}
+mat.assign<-matrixassign5s(mat.mean)
+opt.bmse<-matrixassign5s(mat.mean)
+```
+
+```{r}
+#df.sol
+paretoplotpositive5s(resp.df,opt.bmse)
+opt.bmse[,c(2:3)]
+#####
+mat.mean<-matrix(df.wgt$mean,nrow = 5, ncol = 4)
+mat.assign<-matrixassign5s((mat.mean))
+df.sol<-mat.assign
+#paretoplot(df.wgt,df.sol)
+df.wgt<-data.frame(df.wgt)
+#opt.bmse2<-df.wgt[df.wgt$Cell==df.sol$Cell,]
+opt.bmse2<-df.wgt[c(1,7,11,14,20),]
+paretoplotpositive5s(df.wgt,(opt.bmse2))
+df.out<-df.sol[,c(2,4,4,3,1)]
+library(xtable)
+xtable(df.out)
+
+```
+
+###KLD as secondary responses
+```{r}
+head(kld.neg)
+reps.kld<-cbind(resp.df,kld.neg$negkld)
+paretodf<-reps.kld[,c(1,2,4)]
+head(paretodf)
+#names(paretodf)
+#kldopt.bmse<-
+  #matrixassign(kld.mat)[c(1:4),]
+pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/paretowt.pdf", width = 5, height = 4.8)
+paretoplot(paretodf,opt.bmse)
+  dev.off()
+kld.mat<-matrix( paretodf[,3],nrow = 4)
+
+
+df.wgt
+names(paretodf)<-c("Cell","mean","negkld")
+
+paretodf$objv<-round(paretodf$mean+0.001*paretodf[,3],2)
+paretodf
+
+```
+```{r}
+df.vmax<-data.frame()
+mat.mean<-matrix(df.wgt$mean,nrow = 5, ncol = 4)
+for(bi in seq(1:4)){
+  ggplot.df<-data.frame(mat.mean[bi,])
+  names(ggplot.df)<-c("mean")
+opt.vmax<-ggplot.df[ggplot.df$mean==max(ggplot.df$mean),]
+opt.vmax$cretria<-"max"
+opt.vmax$optv<-max(ggplot.df$mean)
+df.vmax<-rbind(df.vmax,opt.vmax$optv)
+}
+df.vmax
+
+```
+
+```{r}
+head(mat.mean)
+# dev.off()
+# respsurfaceplot5s(mat.mean)
+mat.mean.wt<-matrix(df.wgt$mean,nrow=4)
+mat.mean.w<-t(mat.mean.wt)
+#respsurfaceplot5s(mat.mean.w)
+print(pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/strwt.pdf", width = 5, height = 4.8))
+#pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/strwt.pdf", width = 5, height = 4.8)
+ #dev.off()
+ respsurfaceplot5s(mat.mean.w)
+```
+
+
+
+
+```{r}
+#df.wgt
+datvar<-melt(t(as.matrix(mat.mean.w)))
+dat<-datvar
+  df.lr<-dat
+  for (ind in seq(1:20)) {
+    if(df.lr[ind,"Var1"]==1){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<--1
+  }else if(df.lr[ind,"Var1"]==2){
+    df.lr[ind,"x1"]<--1
+    df.lr[ind,"x2"]<-1
+  }else if(df.lr[ind,"Var1"]==3){
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<--1
+  }else{
+    df.lr[ind,"x1"]<-1
+    df.lr[ind,"x2"]<-1
+  }
+}
+  ##LR
+    lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2, data = df.lr)
+  print(summary(lrq.mat))
+       print("################above: x1+x2+x1*x2################")
+   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var2, data = df.lr)
+  print(summary(lrq.mat))
+  print( xtable(aov(lrq.mat),digits = 4))
+   lrq.mat<-lm(value~x1+x2+  I(x1^2)+I(x2^2)+x1*x2+Var2+Var2*x1+Var2*x2, data = df.lr)
+  print(summary(lrq.mat))
+   print( xtable(aov(lrq.mat),digits = 4))
+
+```
+
+```{r}
+kldconv.df
+head(X)
+head(X[, c(1:3,7,12)],1)
+```
+##Variance
+  The weighted variance is the $\Sigma (A_j, B_l)$ is the individial responses of 
+    each cells. That is      estimated variance  
+    $${\hat \Sigma _i}({\hat V_l}) =\sum\nolimits_{i = 1}^{{N_{il}}} {\left( {\phi _i^2{{\hat \Sigma }_{il}}} \right)}.$$ 
+    For $ Avg(\hat \Sigma({{\hat V_l}}))$, it  is the variance of the model.  In the model, all of them assumed to be homoscedasticity.  
+    $$
+    \hat V=\bar V+ \epsilon= \mu_0+ \beta_l+\tau_j+\epsilon, \epsilon \sim (0, \Sigma({{\hat V_l}}))
+    $$
+    The bias is the confounding error, $e_l= \hat V_l-\bar V$, 
+    And the squared  bias is   
+    $${\mathop{ \Sigma}} ({{\hat V_l(A, \phi)}}) = \frac{1}{{b-1}} \sum\limits_{i= 1}^b {  {\left( {{{\hat V_l(A, \phi)}}     - {{\hat V(A, \phi) }}} \right)^2} }.$$ 
+  MSE: $$\Sigma =Avg(\hat \Sigma({{\hat V_l}})) 
+        + \left( {\frac{1}{{b }}} + 1\right) 
+        {\mathop{ \Sigma}} ({{\hat V_l}}),
+     $$
+```{r}
+# estimated variance  of ecah cell
+
+```
+
+
+##Negative lines
+
+```{r}
+resp.negdf<-resp.df
+resp.negdf$Var<-(-resp.negdf$Var)
+opt.bmseneg<-opt.bmse
+paretoplot5s(resp.negdf,opt.bmse)
+opt.bmse[,c(2:3)]
+   pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/pareto.pdf", width = 5, height = 4.8)
+paretoplot5s(resp.negdf,opt.bmse)
+ dev.off()
+#####
+mat.mean<-matrix(df.wgt$mean,nrow = 5, ncol = 4)
+#mat.assign<-matrixassign(t(mat.mean))
+mat.assign<-matrixassign5s((mat.mean))
+df.sol<-mat.assign
+#paretoplot(df.wgt,df.sol)
+df.wgt<-data.frame(df.wgt)
+#opt.bmse2<-df.wgt[df.wgt$Cell==df.sol$Cell,]
+#opt.bmse<-df.wgt[c(1,7,10,16),]
+opt.bmse<-df.wgt[c(3,6,10,15, 20),]
+df.wgtneg<-df.wgt
+df.wgtneg$Var<- (-df.wgtneg$Var)
+opt.bmse2<-opt.bmse
+opt.bmse2$Var<-(-opt.bmse2$Var)
+paretoplot5s(df.wgtneg,opt.bmse2)
+   pdf(file ="~/Downloads/Rpkg/cvmfd/man_ffd/paretowt.pdf", width = 5, height = 4.8)
+paretoplot5s(df.wgtneg,opt.bmse2)
+ dev.off()
+#paretoplotpositive5s(df.wgtneg,opt.bmse2)
+df.out<-df.sol[,c(2,4,1,3)]
+library(xtable)
+xtable(df.out)
+```
+
+
+```{r}
+ggplot(data=dat.mvar, aes(x=seq(1:20), y=Var))  +
+    geom_line()
+# Most basic error bar
+ggplot(dat.mvar) +
+    geom_bar( aes(x=seq(1:20), y=mean), stat="identity", fill="skyblue", alpha=0.7) +
+    geom_errorbar( aes(x=seq(1:20), ymin=mean-sqrt(Var), ymax=mean+sqrt(Var)), width=0.4, colour="orange", alpha=0.9, size=1.3)
+
+ggplot(dat.mvar) +
+    geom_line( aes(x=seq(1:20), y=mean))  +
+    annotate(geom="text", x=4, y=0.65, label="mean",
+              color="red")+
+    geom_line( aes(x=seq(1:20), y=Var))  +
+    annotate(geom="text", x=4, y=0.17, label="Variance",
+              color="red")+
+  xlab("cell") + ylab("value")+ labs(fill = "Response")+
+  theme(legend.position="topright",legend.title = element_text(color = "blue", size = 10),
+          legend.text = element_text(color = "red"))+
+   geom_hline(yintercept = 0.25,  colour = c(2),lty=c(2))+
+  geom_hline(yintercept = 0.11,  colour = c(2),lty=c(2))+
+  geom_hline(yintercept = 0.7,  colour = c(3),lty=c(2))+
+  theme_bw()
+
+```
